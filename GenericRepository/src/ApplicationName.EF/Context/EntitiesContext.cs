@@ -18,5 +18,7 @@ namespace ApplicationName.EF.Context
             : base("Name=EntitiesContextConnection")
         {
         }
+
+        // Add tables here!
     }
 }

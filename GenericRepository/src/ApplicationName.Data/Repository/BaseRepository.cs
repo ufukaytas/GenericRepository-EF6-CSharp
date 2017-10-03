@@ -7,16 +7,19 @@ using System.Data.Entity.Validation;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Linq.Expressions;
-using ApplicationName.EF.Context;
-using ApplicationName.Data.Entitites;
+using ApplicationName.EF.Context; 
 
 namespace ApplicationName.Data.Repository
 {
-    public class BaseRepository<TEntity> : IBaseRepository<TEntity> where TEntity : Entity
+    public class BaseRepository<TEntity> : IDisposable, IBaseRepository<TEntity> where TEntity : class
     {
 
         #region Field
-        protected EntitiesContext _dbContext;
+        public Expression<Func<TEntity, bool>> Filter { get; set; }
+
+        protected EntitiesContext DbContext;
+
+        private bool _disposed = false;
         #endregion
 
         #region Ctor
@@ -26,7 +29,7 @@ namespace ApplicationName.Data.Repository
         /// <param name="context">An open DataContext</param>
         public BaseRepository(EntitiesContext context)
         {
-            _dbContext = context;
+            DbContext = context;
         }
         #endregion
          
@@ -34,17 +37,23 @@ namespace ApplicationName.Data.Repository
 
         public TEntity Get(int id)
         {
-            return _dbContext.Set<TEntity>().Find(id);
+            return DbContext.Set<TEntity>().Find(id);
         }
 
         public IList<TEntity> GetAll()
         {
-            return _dbContext.Set<TEntity>().ToList();
+            return  Filter == null ? DbContext.Set<TEntity>().ToList() : DbContext.Set<TEntity>().Where(Filter).ToList();
         }
 
         public int Add(TEntity entity)
-        { 
-            var addedItem = _dbContext.Set<TEntity>().Add(entity);
+        {
+            var properyInfo = entity.GetType().GetProperty("CreatedDate");
+            if (properyInfo != null)
+            {
+                properyInfo.SetValue(entity, DateTime.Now);
+            }
+             
+            var addedItem = DbContext.Set<TEntity>().Add(entity);
             Commit();
 
             var propertyInfo = addedItem.GetType().GetProperty("Id");
@@ -58,35 +67,41 @@ namespace ApplicationName.Data.Repository
         }
 
         public void Update(TEntity entity)
-        { 
-            _dbContext.Set<TEntity>().AddOrUpdate(entity);
+        {
+            var properyInfo = entity.GetType().GetProperty("UpdatedDate");
+            if (properyInfo != null)
+            {
+                properyInfo.SetValue(entity, DateTime.Now);
+            }
+
+            DbContext.Set<TEntity>().AddOrUpdate(entity);
             Commit();
         }
 
         public void Delete(TEntity entity)
         { 
-            _dbContext.Set<TEntity>().Remove(entity);
+            DbContext.Set<TEntity>().Remove(entity);
             Commit();
         }
          
         public TEntity Find(Expression<Func<TEntity, bool>> match)
         {
-            return _dbContext.Set<TEntity>().SingleOrDefault(match);
+            return DbContext.Set<TEntity>().SingleOrDefault(match);
         }
 
         public List<TEntity> FindAll(Expression<Func<TEntity, bool>> match)
         {
-            return _dbContext.Set<TEntity>().Where(match).ToList();
+            return DbContext.Set<TEntity>().Where(match).ToList();
         }
 
         public bool Any(Expression<Func<TEntity, bool>> match)
         {
-            return _dbContext.Set<TEntity>().Any(match);
+            return DbContext.Set<TEntity>().Any(match);
         }
          
         public IQueryable<TEntity> Query()
         {
-            throw new NotImplementedException();
+            return DbContext.Set<TEntity>().AsQueryable();
         }
 
         #endregion
@@ -95,17 +110,23 @@ namespace ApplicationName.Data.Repository
 
         public async Task<IList<TEntity>> GetAllAsync()
         {
-            return await _dbContext.Set<TEntity>().ToListAsync();
+            return await DbContext.Set<TEntity>().ToListAsync();
         }
 
         public async Task<TEntity> GetAsync(int id)
         {
-            return await _dbContext.Set<TEntity>().FindAsync(id);
+            return await DbContext.Set<TEntity>().FindAsync(id);
         }
 
         public async Task<int> AddAsync(TEntity entity)
-        { 
-            var addedItem = _dbContext.Set<TEntity>().Add(entity);
+        {
+            var properyInfo = entity.GetType().GetProperty("CreatedDate");
+            if (properyInfo != null)
+            {
+                properyInfo.SetValue(entity, DateTime.Now);
+            }
+
+            var addedItem = DbContext.Set<TEntity>().Add(entity);
             await CommitAsync();
 
             var propertyInfo = addedItem.GetType().GetProperty("Id");
@@ -119,25 +140,31 @@ namespace ApplicationName.Data.Repository
         }
 
         public async Task UpdateAsync(TEntity entity)
-        { 
-            _dbContext.Set<TEntity>().AddOrUpdate(entity);
+        {
+            var properyInfo = entity.GetType().GetProperty("UpdatedDate");
+            if (properyInfo != null)
+            {
+                properyInfo.SetValue(entity, DateTime.Now);
+            }
+
+            DbContext.Set<TEntity>().AddOrUpdate(entity);
             await CommitAsync();
         }
 
         public async Task DeleteAsync(TEntity entity)
         { 
-            _dbContext.Set<TEntity>().Remove(entity);
+            DbContext.Set<TEntity>().Remove(entity);
             await CommitAsync();
         }
 
         public async Task<TEntity> FindAsync(Expression<Func<TEntity, bool>> match)
         {
-            return await _dbContext.Set<TEntity>().SingleOrDefaultAsync(match);
+            return await DbContext.Set<TEntity>().SingleOrDefaultAsync(match);
         }
 
         public async Task<List<TEntity>> FindAllAsync(Expression<Func<TEntity, bool>> match)
         {
-            return await _dbContext.Set<TEntity>().Where(match).ToListAsync();
+            return await DbContext.Set<TEntity>().Where(match).ToListAsync();
         }
 
         #endregion
@@ -146,21 +173,40 @@ namespace ApplicationName.Data.Repository
 
         private void Commit()
         {
-            _dbContext.SaveChanges();
+            DbContext.SaveChanges();
         }
 
         private async Task CommitAsync()
         {
-            await _dbContext.SaveChangesAsync();
+            await DbContext.SaveChangesAsync();
         }
-  
 
-        public Task<IQueryable<TEntity>> QueryAsync()
+        #endregion
+
+
+        #region Dispose
+
+        protected virtual void Dispose(bool disposing)
         {
-            throw new NotImplementedException();
+            if (!_disposed)
+            {
+                if (disposing)
+                {
+                    if (DbContext != null)
+                    {
+                        DbContext.Dispose();
+                    }
+                }
+
+                _disposed = true;
+            }
         }
 
-
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
 
         #endregion
 
